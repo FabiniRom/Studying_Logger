@@ -13,8 +13,11 @@ def main():
     app = gui.LoggerUI(root)
 
     # Set up callback for updating the GUI with logs
-    def log_callback(time_stamp, message):
-        app.add_log(time_stamp, message)
+    def log_callback(time_stamp, title, action):
+        if action == "add":
+            app.add_log(time_stamp, title)
+        elif action == "remove":
+            app.remove_log(time_stamp, title)
 
     # Functions to control monitoring
     def toggle_monitoring():
@@ -31,7 +34,7 @@ def main():
         root.quit()
 
     def partial_time():
-        app.partial()
+        app.partial_time()
 
     # Start a thread to monitor window changes
     monitor_thread = threading.Thread(target=window_monitor.monitor_window_changes, args=(log_callback,))

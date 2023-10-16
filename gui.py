@@ -8,41 +8,6 @@ from tkinter import ttk, scrolledtext
 import window_monitor
 
 
-def compute_and_populate_time_length():
-    conn = sqlite3.connect('window_log.db')
-    cursor = conn.cursor()
-
-    # Fetch all entries from the database where time_length is NULL
-    cursor.execute('SELECT id, timestamp FROM window_changes WHERE time_length IS NULL ORDER BY id')
-    entries = cursor.fetchall()
-
-    # Loop through the entries that have an empty time_length column
-    for i in range(len(entries)):
-        current_id, current_timestamp = entries[i]
-
-        # If it's the last entry, compute time difference against the current time
-        if i == len(entries) - 1:
-            next_time = datetime.now()
-        else:
-            _, next_timestamp = entries[i + 1]
-            next_time = datetime.strptime(next_timestamp, "%Y-%m-%d %H:%M:%S")
-
-        # Calculate the time difference
-        current_time = datetime.strptime(current_timestamp, "%Y-%m-%d %H:%M:%S")
-        time_difference = next_time - current_time
-
-        # Extract hours, minutes, and seconds directly from the timedelta object
-        hours, remainder = divmod(time_difference.seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        time_str = f"{hours}h {minutes}m {seconds}s"
-
-        # Update the database with the formatted time difference for the current entry
-        cursor.execute('UPDATE window_changes SET time_length = ? WHERE id = ?', (time_str, current_id))
-
-    conn.commit()
-    conn.close()
-
-
 class LoggerUI:
 
     def __init__(self, root):
@@ -61,24 +26,29 @@ class LoggerUI:
         # Configure the top frame weights
         self.top_frame.grid_columnconfigure(0, weight=1)
         self.top_frame.grid_columnconfigure(1, weight=1)
+        self.top_frame.grid_columnconfigure(2, weight=1)
 
         # Start/Pause button
         self.is_paused = True
-        self.start_pause_button = ttk.Button(self.top_frame, text="Start", command=self.toggle_start_pause)
+        self.start_pause_button = ttk.Button(self.top_frame, text="Pause", command=self.toggle_start_pause)
         self.start_pause_button.grid(row=0, column=0, padx=20, sticky="ew")
 
         # Stop button
         self.stop_button = ttk.Button(self.top_frame, text="Stop", command=self.stop_logging)
         self.stop_button.grid(row=0, column=1, padx=20, sticky="ew")
 
-        # display partial button
-        self.partial_button = ttk.Button(self.top_frame, text="Partial", command=self.partial)
+        # display partial_time button
+        self.partial_button = ttk.Button(self.top_frame, text="Partial", command=self.partial_time)
         self.partial_button.grid(row=0, column=2, padx=20, sticky="ew")
 
         # Bottom section for event logs
         self.tree = ttk.Treeview(root, columns=('Time', 'Event'), show='headings')
         self.tree.heading('Time', text='Time')
+        self.tree.column('Time', width=100)
+
         self.tree.heading('Event', text='Event')
+        self.tree.column('Event', width=300)
+
         self.tree.grid(row=1, column=0, pady=20, sticky="nsew")
 
         # Adding a scrollbar
@@ -90,7 +60,6 @@ class LoggerUI:
         self.root.grid_rowconfigure(1, weight=5)
         self.root.grid_columnconfigure(0, weight=1)
 
-
     def on_closing(self):
         # Destroy any child windows or perform any cleanup here
         # ...
@@ -99,22 +68,21 @@ class LoggerUI:
         # Finally, destroy the main window
         self.root.destroy()
 
-
     def toggle_start_pause(self):
-            if self.is_paused:
-                self.start_pause_button.config(text="Pause")
-                # Call the function to start logging here
-            else:
-                self.start_pause_button.config(text="Start")
-                # Call the function to pause logging here
-            self.is_paused = not self.is_paused
+        if self.is_paused:
+            self.start_pause_button.config(text="Pause")
+            # Call the function to start logging here
+        else:
+            self.start_pause_button.config(text="Start")
+            # Call the function to pause logging here
+        self.is_paused = not self.is_paused
 
     def stop_logging(self):
         # Call the function to stop logging here
         window_monitor.stop_monitoring()
 
-    def partial(self):
-        window_monitor.pause_monitoring()
+    def partial_time(self):
+        window_monitor.partial_display()
 
         # Display the cumulative time
         self.display_cumulative_time()
@@ -124,13 +92,10 @@ class LoggerUI:
         self.partial_window = tk.Toplevel(self.root)
         self.partial_window.title("Cumulative Time Spent Today")
 
-        # Step 2: Call compute_and_populate_time_length method
-        compute_and_populate_time_length()
-
         # Step 3 & 4: Loop over all entries and accumulate the time length for identical window titles
         conn = sqlite3.connect('window_log.db')
         cursor = conn.cursor()
-        cursor.execute("SELECT window_title, time_length FROM window_changes WHERE date(timestamp) = date('now')")
+        cursor.execute("SELECT window_title, time_length FROM window_changes")
         entries = cursor.fetchall()
 
         time_accumulator = {}
@@ -176,3 +141,11 @@ class LoggerUI:
 
     def add_log(self, time_stamp, message):
         self.tree.insert('', '0', values=(time_stamp, message))
+
+    def remove_log(self, timestamp, window_title):
+        for item in self.tree.get_children():
+            item_timestamp, item_window_title = self.tree.item(item, 'values')
+            if item_timestamp == timestamp and item_window_title == window_title:
+                # Delete the matching item from the Treeview
+                self.tree.delete(item)
+                break
